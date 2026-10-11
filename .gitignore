@@ -1,0 +1,6 @@
+.idea
+.nvmrc
+mise.toml
+
+node_modules
+dist
