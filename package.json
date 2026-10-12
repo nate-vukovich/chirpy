@@ -6,7 +6,10 @@
   "scripts": {
     "build": "npx tsc",
     "start": "node dist/index.js",
-    "dev": "npx tsc && node dist/index.js"
+    "dev": "npx tsc && node dist/index.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{js,ts,json,md}\""
   },
   "keywords": [],
   "author": "",
@@ -14,7 +17,22 @@
   "packageManager": "pnpm@12.11.2",
   "type": "module",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
-    "typescript": "^7.0.2"
+    "@typescript-eslint/eslint-plugin": "^8.71.1",
+    "@typescript-eslint/parser": "^8.71.1",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "globals": "^17.13.0",
+    "jiti": "^2.7.0",
+    "prettier": "^3.9.10",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.71.1"
+  },
+  "dependencies": {
+    "express": "^5.3.0"
   }
 }
