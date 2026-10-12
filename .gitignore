@@ -4,3 +4,4 @@ mise.toml
 
 node_modules
 dist
+server.log
