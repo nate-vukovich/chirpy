@@ -12,6 +12,7 @@ app.use(middlewareLogResponses);
 app.use('/app', middlewareMetricsInc);
 
 // EXPRESS USE CONFIGS
+app.use(express.json());
 app.use('/app', express.static('./src/app'));
 
 app.get('/api/healthz', (req: Request, res: Response) => {
@@ -29,10 +30,32 @@ app.get('/admin/metrics', (req: Request, res: Response) => {
 </html>`);
 });
 
-app.get('/admin/reset', (_, res: Response) => {
+app.post('/admin/reset', (_, res: Response) => {
   config.fileserverHits = 0;
 
   res.send();
+});
+
+app.post('/api/validate_chirp', (req: Request, res: Response) => {
+  try {
+    const { body: parsedBody } = req.body;
+
+    if (parsedBody.length > 140) {
+      res.status(400).send({
+        error: 'Chirp is too long',
+      });
+    } else {
+      res.send({
+        valid: true,
+      });
+    }
+  } catch (err) {
+    console.log('Error: ', err);
+
+    res.status(500).send({
+      error: 'Something went wrong',
+    });
+  }
 });
 
 app.listen(PORT, () => {
