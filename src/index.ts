@@ -4,6 +4,30 @@ import type { Express, Request, Response, NextFunction } from 'express';
 
 import { config } from './config.js';
 
+class BadRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+class UnauthorizedError extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+class ForbiddenError extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+class NotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
 const app: Express = express();
 const PORT = process.env.PORT || 8080;
 
@@ -37,26 +61,40 @@ app.post('/admin/reset', (_, res: Response) => {
 });
 
 app.post('/api/validate_chirp', (req: Request, res: Response) => {
-  try {
-    const { body: parsedBody } = req.body;
+  const { body: parsedBody } = req.body;
 
-    if (parsedBody.length > 140) {
-      res.status(400).send({
-        error: 'Chirp is too long',
-      });
-    } else {
-      res.send({
-        valid: true,
-      });
-    }
-  } catch (err) {
-    console.log('Error: ', err);
+  if (parsedBody.length > 140) {
+    throw new BadRequestError('Chirp is too long. Max length is 140');
+  } else {
+    const bodyWords = parsedBody.split(' ');
 
-    res.status(500).send({
-      error: 'Something went wrong',
+    const cleanedWords = bodyWords
+      .map((word: string) => {
+        if (word.toLowerCase() === 'kerfuffle') {
+          return '****';
+        }
+
+        if (word.toLowerCase() === 'sharbert') {
+          return '****';
+        }
+
+        if (word.toLowerCase() === 'fornax') {
+          return '****';
+        }
+
+        return word;
+      })
+      .join(' ');
+
+    console.log('cleaned', cleanedWords);
+
+    res.send({
+      cleanedBody: cleanedWords,
     });
   }
 });
+
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
@@ -80,6 +118,44 @@ function middlewareLogResponses(
 
 function middlewareMetricsInc(req: Request, res: Response, next: NextFunction) {
   config.fileserverHits += 1;
+
+  next();
+}
+
+function errorHandler(
+  err: Error,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  console.log('Error: ', err);
+
+  if (err instanceof BadRequestError) {
+    res.status(400).json({
+      error: err.message,
+    });
+  }
+
+  if (err instanceof UnauthorizedError) {
+    res.status(401).json({
+      error: err.message,
+    });
+  }
+
+  if (err instanceof ForbiddenError) {
+    res.status(403).json({
+      error: err.message,
+    });
+  }
+  if (err instanceof NotFoundError) {
+    res.status(404).json({
+      error: err.message,
+    });
+  }
+
+  res.status(500).json({
+    error: 'Something went wrong on our end',
+  });
 
   next();
 }
