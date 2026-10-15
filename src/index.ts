@@ -16,7 +16,13 @@ import {
   getChirpById,
 } from './db/queries/chirps.js';
 
-import { checkPasswordHash, hashPassword } from './auth.js';
+import {
+  checkPasswordHash,
+  getBearerToken,
+  hashPassword,
+  makeJWT,
+  validateJWT,
+} from './auth.js';
 
 const migrationClient = postgres(config.db.url, { max: 1 });
 await migrate(drizzle(migrationClient), config.db.migrationConfig);
@@ -107,46 +113,44 @@ app.post(
 // CREATE CHIRPS
 app.post(
   '/api/chirps',
-  async (
-    req: Request<{ body: string; userId: string }>,
-    res: Response<NewChirp>
-  ) => {
+  async (req: Request<{ body: string }>, res: Response<NewChirp>) => {
     const reqBody = req.body.body;
-    const userId = req.body.userId;
+    const userToken = getBearerToken(req);
+    const userId = validateJWT(userToken, config.api.jwtSecret);
 
-    if (reqBody.length > 140) {
-      throw new BadRequestError('Chirp is too long. Max length is 140');
-    } else {
-      const bodyWords = reqBody.split(' ');
+    if (userToken && userId !== '') {
+      if (reqBody.length > 140) {
+        throw new BadRequestError('Chirp is too long. Max length is 140');
+      } else {
+        const bodyWords = reqBody.split(' ');
 
-      const cleanedChirp = bodyWords
-        .map((word: string) => {
-          if (word.toLowerCase() === 'kerfuffle') {
-            return '****';
-          }
+        const cleanedChirp = bodyWords
+          .map((word: string) => {
+            if (word.toLowerCase() === 'kerfuffle') {
+              return '****';
+            }
 
-          if (word.toLowerCase() === 'sharbert') {
-            return '****';
-          }
+            if (word.toLowerCase() === 'sharbert') {
+              return '****';
+            }
 
-          if (word.toLowerCase() === 'fornax') {
-            return '****';
-          }
+            if (word.toLowerCase() === 'fornax') {
+              return '****';
+            }
 
-          return word;
-        })
-        .join(' ');
+            return word;
+          })
+          .join(' ');
 
-      // add chirp to the db
+        const newChirpResponse = await createNewChirp({
+          body: cleanedChirp,
+          userId,
+        });
 
-      const newChirpResponse = await createNewChirp({
-        body: cleanedChirp,
-        userId,
-      });
+        console.log('newChirpResponse: ', newChirpResponse);
 
-      console.log('newChirpResponse: ', newChirpResponse);
-
-      res.status(201).json(newChirpResponse);
+        res.status(201).json(newChirpResponse);
+      }
     }
   }
 );
@@ -166,14 +170,9 @@ app.get(
     const chirpId = req.params.chirpId;
     const chirp = await getChirpById(chirpId);
 
-    console.log('chirp: ', chirp);
-    console.log('typeof chirp: ', typeof chirp);
-
     if (!chirp) {
       throw new NotFoundError('Not Found');
     }
-
-    console.log('chirp: ', chirp);
 
     res.json(chirp);
   }
@@ -181,11 +180,20 @@ app.get(
 
 app.use(
   '/api/login',
-  async (req: Request<{ password: string; email: string }>, res: Response) => {
-    const { password, email } = req.body;
-    const userData = await getUser(email);
+  async (
+    req: Request<{
+      password: string;
+      email: string;
+      expiresInSeconds?: number;
+    }>,
+    res: Response
+  ) => {
+    const { password, email, expiresInSeconds } = req.body;
 
-    console.log('userData: ', userData);
+    const tokenExpiration =
+      expiresInSeconds && expiresInSeconds > 3600 ? expiresInSeconds : 3600;
+
+    const userData = await getUser(email);
 
     if (
       userData &&
@@ -193,8 +201,10 @@ app.use(
     ) {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { hashedPassword, ...rest } = userData;
+      const jwtToken = makeJWT(rest.id, tokenExpiration, config.api.jwtSecret);
+      const userWithJwt = { ...rest, token: jwtToken };
 
-      res.json(rest);
+      res.json(userWithJwt);
     } else {
       throw new UnauthorizedError('Unauthorized');
     }
