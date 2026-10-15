@@ -9,12 +9,14 @@ import { config } from './config.js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { drizzle } from 'drizzle-orm/postgres-js';
 
-import { createUser, deleteAllUsers } from './db/queries/users.js';
+import { createUser, deleteAllUsers, getUser } from './db/queries/users.js';
 import {
   createNewChirp,
   getAllChirps,
   getChirpById,
 } from './db/queries/chirps.js';
+
+import { checkPasswordHash, hashPassword } from './auth.js';
 
 const migrationClient = postgres(config.db.url, { max: 1 });
 await migrate(drizzle(migrationClient), config.db.migrationConfig);
@@ -85,7 +87,7 @@ app.post('/admin/reset', async (_, res: Response) => {
 app.post(
   '/api/users',
   async (
-    req: Request<{ email: string }>,
+    req: Request<{ email: string; password: string }>,
     res: Response<{
       id: string;
       email: string;
@@ -93,7 +95,10 @@ app.post(
       updatedAt: Date;
     }>
   ) => {
-    const createdUser = await createUser({ email: req.body.email });
+    const { email, password } = req.body;
+
+    const hashedPassword = await hashPassword(password);
+    const createdUser = await createUser({ email, hashedPassword });
 
     res.status(201).json(createdUser);
   }
@@ -171,6 +176,28 @@ app.get(
     console.log('chirp: ', chirp);
 
     res.json(chirp);
+  }
+);
+
+app.use(
+  '/api/login',
+  async (req: Request<{ password: string; email: string }>, res: Response) => {
+    const { password, email } = req.body;
+    const userData = await getUser(email);
+
+    console.log('userData: ', userData);
+
+    if (
+      userData &&
+      (await checkPasswordHash(password, userData.hashedPassword))
+    ) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { hashedPassword, ...rest } = userData;
+
+      res.json(rest);
+    } else {
+      throw new UnauthorizedError('Unauthorized');
+    }
   }
 );
 
