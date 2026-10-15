@@ -1,8 +1,14 @@
 import express from 'express';
-
 import type { Express, Request, Response, NextFunction } from 'express';
 
 import { config } from './config.js';
+
+import postgres from 'postgres';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { drizzle } from 'drizzle-orm/postgres-js';
+
+const migrationClient = postgres(config.db.url, { max: 1 });
+await migrate(drizzle(migrationClient), config.db.migrationConfig);
 
 class BadRequestError extends Error {
   constructor(message: string) {
@@ -49,13 +55,13 @@ app.get('/admin/metrics', (req: Request, res: Response) => {
   res.send(`<html lang="en">
   <body>
     <h1>Welcome, Chirpy Admin</h1>
-    <p>Chirpy has been visited ${config.fileserverHits} times!</p>
+    <p>Chirpy has been visited ${config.api.fileserverHits} times!</p>
   </body>
 </html>`);
 });
 
 app.post('/admin/reset', (_, res: Response) => {
-  config.fileserverHits = 0;
+  config.api.fileserverHits = 0;
 
   res.send();
 });
@@ -94,6 +100,33 @@ app.post('/api/validate_chirp', (req: Request, res: Response) => {
   }
 });
 
+// CREATE USER
+app.post(
+  '/api/users',
+  (
+    req: Request<{ email: string }>,
+    res: Response<{
+      id: string;
+      email: string;
+      createdAt: string;
+      updatedAt: string;
+    }>
+  ) => {
+    const { email } = req.body;
+
+    console.log('email', email);
+
+
+
+    res.status(201).send({
+      id: '50746277-23c6-4d85-a890-564c0044c2fb',
+      email: 'user@example.com',
+      createdAt: '2021-07-07T00:00:00Z',
+      updatedAt: '2021-07-07T00:00:00Z',
+    });
+  }
+);
+
 app.use(errorHandler);
 
 app.listen(PORT, () => {
@@ -117,7 +150,7 @@ function middlewareLogResponses(
 }
 
 function middlewareMetricsInc(req: Request, res: Response, next: NextFunction) {
-  config.fileserverHits += 1;
+  config.api.fileserverHits += 1;
 
   next();
 }
