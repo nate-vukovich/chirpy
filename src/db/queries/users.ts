@@ -7,5 +7,12 @@ export async function createUser(user: NewUser) {
     .values(user)
     .onConflictDoNothing()
     .returning();
+
+  return result;
+}
+
+export async function deleteAllUsers() {
+  const [result] = await db.delete(users);
+
   return result;
 }

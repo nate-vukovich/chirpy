@@ -1,11 +1,20 @@
 import express from 'express';
+import postgres from 'postgres';
+
 import type { Express, Request, Response, NextFunction } from 'express';
+import type { NewChirp } from './db/schema.js';
 
 import { config } from './config.js';
 
-import postgres from 'postgres';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { drizzle } from 'drizzle-orm/postgres-js';
+
+import { createUser, deleteAllUsers } from './db/queries/users.js';
+import {
+  createNewChirp,
+  getAllChirps,
+  getChirpById,
+} from './db/queries/chirps.js';
 
 const migrationClient = postgres(config.db.url, { max: 1 });
 await migrate(drizzle(migrationClient), config.db.migrationConfig);
@@ -60,70 +69,108 @@ app.get('/admin/metrics', (req: Request, res: Response) => {
 </html>`);
 });
 
-app.post('/admin/reset', (_, res: Response) => {
+app.post('/admin/reset', async (_, res: Response) => {
   config.api.fileserverHits = 0;
 
-  res.send();
-});
-
-app.post('/api/validate_chirp', (req: Request, res: Response) => {
-  const { body: parsedBody } = req.body;
-
-  if (parsedBody.length > 140) {
-    throw new BadRequestError('Chirp is too long. Max length is 140');
-  } else {
-    const bodyWords = parsedBody.split(' ');
-
-    const cleanedWords = bodyWords
-      .map((word: string) => {
-        if (word.toLowerCase() === 'kerfuffle') {
-          return '****';
-        }
-
-        if (word.toLowerCase() === 'sharbert') {
-          return '****';
-        }
-
-        if (word.toLowerCase() === 'fornax') {
-          return '****';
-        }
-
-        return word;
-      })
-      .join(' ');
-
-    console.log('cleaned', cleanedWords);
-
-    res.send({
-      cleanedBody: cleanedWords,
-    });
+  if (config.api.platform !== 'dev') {
+    throw new ForbiddenError('Forbidden');
   }
+
+  await deleteAllUsers();
+
+  res.send();
 });
 
 // CREATE USER
 app.post(
   '/api/users',
-  (
+  async (
     req: Request<{ email: string }>,
     res: Response<{
       id: string;
       email: string;
-      createdAt: string;
-      updatedAt: string;
+      createdAt: Date;
+      updatedAt: Date;
     }>
   ) => {
-    const { email } = req.body;
+    const createdUser = await createUser({ email: req.body.email });
 
-    console.log('email', email);
+    res.status(201).json(createdUser);
+  }
+);
 
+// CREATE CHIRPS
+app.post(
+  '/api/chirps',
+  async (
+    req: Request<{ body: string; userId: string }>,
+    res: Response<NewChirp>
+  ) => {
+    const reqBody = req.body.body;
+    const userId = req.body.userId;
 
+    if (reqBody.length > 140) {
+      throw new BadRequestError('Chirp is too long. Max length is 140');
+    } else {
+      const bodyWords = reqBody.split(' ');
 
-    res.status(201).send({
-      id: '50746277-23c6-4d85-a890-564c0044c2fb',
-      email: 'user@example.com',
-      createdAt: '2021-07-07T00:00:00Z',
-      updatedAt: '2021-07-07T00:00:00Z',
-    });
+      const cleanedChirp = bodyWords
+        .map((word: string) => {
+          if (word.toLowerCase() === 'kerfuffle') {
+            return '****';
+          }
+
+          if (word.toLowerCase() === 'sharbert') {
+            return '****';
+          }
+
+          if (word.toLowerCase() === 'fornax') {
+            return '****';
+          }
+
+          return word;
+        })
+        .join(' ');
+
+      // add chirp to the db
+
+      const newChirpResponse = await createNewChirp({
+        body: cleanedChirp,
+        userId,
+      });
+
+      console.log('newChirpResponse: ', newChirpResponse);
+
+      res.status(201).json(newChirpResponse);
+    }
+  }
+);
+
+// GET ALL CHIRPS
+
+app.get('/api/chirps', async (req: Request, res: Response<NewChirp[]>) => {
+  const allChirps = await getAllChirps();
+
+  res.json(allChirps);
+});
+
+// GET CHIP BY ID
+app.get(
+  '/api/chirps/:chirpId',
+  async (req: Request<{ chirpId: string }>, res: Response) => {
+    const chirpId = req.params.chirpId;
+    const chirp = await getChirpById(chirpId);
+
+    console.log('chirp: ', chirp);
+    console.log('typeof chirp: ', typeof chirp);
+
+    if (!chirp) {
+      throw new NotFoundError('Not Found');
+    }
+
+    console.log('chirp: ', chirp);
+
+    res.json(chirp);
   }
 );
 
