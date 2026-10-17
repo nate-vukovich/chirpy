@@ -187,9 +187,16 @@ app.post(
 // GET ALL CHIRPS
 
 app.get('/api/chirps', async (req: Request, res: Response<NewChirp[]>) => {
-  const allChirps = await getAllChirps();
+  let authorId = '';
+  const authorIdQuery = req.query.authorId;
 
-  res.json(allChirps);
+  if (typeof authorIdQuery === 'string') {
+    authorId = authorIdQuery;
+  }
+
+  const chirps = await getAllChirps(authorId);
+
+  res.json(chirps);
 });
 
 // GET CHIP BY ID
