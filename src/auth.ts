@@ -47,7 +47,7 @@ export function getBearerToken(req: Request): string {
   const [scheme, token] = tokenBearer?.split(' ') ?? [];
 
   if (scheme !== 'Bearer' || !token) {
-    throw new Error('Missing or invalid Authorization header');
+    return '';
   }
 
   return token;
@@ -55,4 +55,15 @@ export function getBearerToken(req: Request): string {
 
 export function makeRefreshToken(): string {
   return randomBytes(32).toString('hex');
+}
+
+export function getAPIKey(req: Request) {
+  const apiKeyHeader = req.get('Authorization');
+  const [scheme, apiKey] = apiKeyHeader?.split(' ') ?? [];
+
+  if (scheme !== 'ApiKey') {
+    return;
+  }
+
+  return apiKey;
 }

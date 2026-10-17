@@ -9,15 +9,23 @@ import { config } from './config.js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { drizzle } from 'drizzle-orm/postgres-js';
 
-import { createUser, deleteAllUsers, getUser } from './db/queries/users.js';
+import {
+  createUser,
+  deleteAllUsers,
+  getUser,
+  updateUser,
+  upgradeToRedStatus,
+} from './db/queries/users.js';
 import {
   createNewChirp,
+  deleteChirp,
   getAllChirps,
   getChirpById,
 } from './db/queries/chirps.js';
 
 import {
   checkPasswordHash,
+  getAPIKey,
   getBearerToken,
   hashPassword,
   makeJWT,
@@ -35,25 +43,25 @@ import { SIXTY_DAYS } from './constants.js';
 const migrationClient = postgres(config.db.url, { max: 1 });
 await migrate(drizzle(migrationClient), config.db.migrationConfig);
 
-class BadRequestError extends Error {
+export class BadRequestError extends Error {
   constructor(message: string) {
     super(message);
   }
 }
 
-class UnauthorizedError extends Error {
+export class UnauthorizedError extends Error {
   constructor(message: string) {
     super(message);
   }
 }
 
-class ForbiddenError extends Error {
+export class ForbiddenError extends Error {
   constructor(message: string) {
     super(message);
   }
 }
 
-class NotFoundError extends Error {
+export class NotFoundError extends Error {
   constructor(message: string) {
     super(message);
   }
@@ -266,6 +274,76 @@ app.post('/api/revoke', async (req: Request, res: Response) => {
   res.status(204).send();
 });
 
+app.put(
+  '/api/users',
+  async (req: Request<{ password: string; email: string }>, res: Response) => {
+    const token = getBearerToken(req);
+
+    if (!token || token === 'badToken') {
+      res.status(401).send();
+    } else {
+      const userSub = validateJWT(token, config.api.jwtSecret);
+
+      const { email, password } = req.body;
+      const hashedPassword = await hashPassword(password);
+
+      const updatedUser = await updateUser(userSub, hashedPassword, email);
+
+      res.json(updatedUser);
+    }
+  }
+);
+
+app.delete('/api/chirps/:chirpId', async (req: Request, res: Response) => {
+  const token = getBearerToken(req);
+
+  if (!token) {
+    return res.status(401).send();
+  }
+
+  let userId: string;
+
+  try {
+    userId = validateJWT(token, config.api.jwtSecret);
+  } catch {
+    return res.status(401).send();
+  }
+
+  const { chirpId } = req.params;
+
+  const chirp = await getChirpById(chirpId as string);
+  if (!chirp) {
+    return res.status(404).send();
+  }
+
+  if (chirp.userId !== userId) {
+    return res.status(403).send();
+  }
+
+  await deleteChirp(chirpId as string, userId);
+  res.status(204).send();
+});
+
+app.post('/api/polka/webhooks', async (req: Request, res: Response) => {
+  const apiKey = getAPIKey(req);
+
+  if (!apiKey) {
+    throw new UnauthorizedError('API Key missing');
+  } else {
+    if (req.body.event !== 'user.upgraded') {
+      res.status(204).send();
+    } else {
+      const upgradedUser = await upgradeToRedStatus(req.body.data.userId);
+
+      if (upgradedUser) {
+        res.status(204).send();
+      } else {
+        throw new NotFoundError('User not found');
+      }
+    }
+  }
+});
+
 app.use(errorHandler);
 
 app.listen(PORT, () => {
@@ -303,24 +381,25 @@ function errorHandler(
   console.log('Error: ', err);
 
   if (err instanceof BadRequestError) {
-    res.status(400).json({
+    return res.status(400).json({
       error: err.message,
     });
   }
 
   if (err instanceof UnauthorizedError) {
-    res.status(401).json({
+    return res.status(401).json({
       error: err.message,
     });
   }
 
   if (err instanceof ForbiddenError) {
-    res.status(403).json({
+    return res.status(403).json({
       error: err.message,
     });
   }
+
   if (err instanceof NotFoundError) {
-    res.status(404).json({
+    return res.status(404).json({
       error: err.message,
     });
   }
