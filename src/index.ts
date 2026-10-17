@@ -188,13 +188,20 @@ app.post(
 
 app.get('/api/chirps', async (req: Request, res: Response<NewChirp[]>) => {
   let authorId = '';
+  let sort = 'asc';
+
   const authorIdQuery = req.query.authorId;
+  const sortQuery = req.query.sort;
 
   if (typeof authorIdQuery === 'string') {
     authorId = authorIdQuery;
   }
 
-  const chirps = await getAllChirps(authorId);
+  if (typeof sortQuery === 'string') {
+    sort = sortQuery;
+  }
+
+  const chirps = await getAllChirps(authorId, sort);
 
   res.json(chirps);
 });
