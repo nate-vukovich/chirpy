@@ -41,3 +41,5 @@ export const refreshTokens = pgTable('refresh_tokens', {
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
 });
+
+export type RefreshToken = typeof refreshTokens.$inferInsert;

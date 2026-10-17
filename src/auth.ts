@@ -1,7 +1,7 @@
 import * as argon2 from 'argon2';
-import jwt from 'jsonwebtoken';
-
 import type { JwtPayload } from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
+import { randomBytes } from 'node:crypto';
 import type { Request } from 'express';
 
 type JwtCustomPayload = Pick<JwtPayload, 'iss' | 'sub' | 'iat' | 'exp'>;
@@ -51,4 +51,8 @@ export function getBearerToken(req: Request): string {
   }
 
   return token;
+}
+
+export function makeRefreshToken(): string {
+  return randomBytes(32).toString('hex');
 }

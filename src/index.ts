@@ -21,8 +21,16 @@ import {
   getBearerToken,
   hashPassword,
   makeJWT,
+  makeRefreshToken,
   validateJWT,
 } from './auth.js';
+
+import {
+  createRefreshToken,
+  getRefreshToken,
+  revokeRefreshToken,
+} from './db/queries/tokens.js';
+import { SIXTY_DAYS } from './constants.js';
 
 const migrationClient = postgres(config.db.url, { max: 1 });
 await migrate(drizzle(migrationClient), config.db.migrationConfig);
@@ -116,7 +124,20 @@ app.post(
   async (req: Request<{ body: string }>, res: Response<NewChirp>) => {
     const reqBody = req.body.body;
     const userToken = getBearerToken(req);
-    const userId = validateJWT(userToken, config.api.jwtSecret);
+
+    if (!userToken) {
+      return res.status(401).send();
+    }
+
+    let userId: string;
+
+    try {
+      userId = validateJWT(userToken, config.api.jwtSecret);
+    } catch {
+      return res.status(401).send();
+    }
+
+    // const userId = validateJWT(userToken, config.api.jwtSecret);
 
     if (userToken && userId !== '') {
       if (reqBody.length > 140) {
@@ -147,10 +168,10 @@ app.post(
           userId,
         });
 
-        console.log('newChirpResponse: ', newChirpResponse);
-
         res.status(201).json(newChirpResponse);
       }
+    } else {
+      res.status(401).send();
     }
   }
 );
@@ -178,20 +199,16 @@ app.get(
   }
 );
 
-app.use(
+app.post(
   '/api/login',
   async (
     req: Request<{
       password: string;
       email: string;
-      expiresInSeconds?: number;
     }>,
     res: Response
   ) => {
-    const { password, email, expiresInSeconds } = req.body;
-
-    const tokenExpiration =
-      expiresInSeconds && expiresInSeconds > 3600 ? expiresInSeconds : 3600;
+    const { password, email } = req.body;
 
     const userData = await getUser(email);
 
@@ -201,15 +218,53 @@ app.use(
     ) {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { hashedPassword, ...rest } = userData;
-      const jwtToken = makeJWT(rest.id, tokenExpiration, config.api.jwtSecret);
-      const userWithJwt = { ...rest, token: jwtToken };
+      const jwtToken = makeJWT(rest.id, 3600, config.api.jwtSecret);
+      const refreshToken = makeRefreshToken();
 
-      res.json(userWithJwt);
+      await createRefreshToken({
+        userId: rest.id,
+        token: refreshToken,
+        expiresAt: new Date(Date.now() + SIXTY_DAYS),
+      });
+
+      const userLoginData = { ...rest, token: jwtToken, refreshToken };
+
+      res.json(userLoginData);
     } else {
       throw new UnauthorizedError('Unauthorized');
     }
   }
 );
+
+app.post('/api/refresh', async (req: Request, res: Response) => {
+  const headerRefreshToken = getBearerToken(req);
+
+  const dbRefreshToken = await getRefreshToken(headerRefreshToken);
+
+  if (
+    !dbRefreshToken ||
+    dbRefreshToken.revokedAt !== null ||
+    dbRefreshToken.expiresAt.getTime() <= Date.now()
+  ) {
+    res.status(401).send();
+  } else {
+    const newJWTToken = makeJWT(
+      dbRefreshToken.userId,
+      3600,
+      config.api.jwtSecret
+    );
+
+    res.json({ token: newJWTToken });
+  }
+});
+
+app.post('/api/revoke', async (req: Request, res: Response) => {
+  const headerRefreshToken = getBearerToken(req);
+
+  await revokeRefreshToken(headerRefreshToken);
+
+  res.status(204).send();
+});
 
 app.use(errorHandler);
 
